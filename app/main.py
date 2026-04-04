@@ -41,11 +41,12 @@ def calculate_score(place_data):
 
 app = FastAPI(title="SEO Local API")
 
-# CORS
+# CORS - Restrict to frontend origin
+ALLOWED_ORIGINS = getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -73,8 +74,9 @@ def audit_gbp(url: str):
         place = result['results'][0]
         score = calculate_score(place)
 
-        # Save to database (optional - continue if DB fails)
+        # Save to database - make failure explicit
         audit_id = None
+        audit_saved = False
         try:
             conn = get_db_connection()
             cur = conn.cursor()
@@ -87,12 +89,15 @@ def audit_gbp(url: str):
             audit_id = cur.fetchone()[0]
             conn.commit()
             conn.close()
+            audit_saved = True
         except Exception as db_error:
-            print(f"Warning: Database save failed: {db_error}")
-            audit_id = 0  # Fallback ID
+            import logging
+            logging.error(f"Database save failed for url={url}: {db_error}")
+            audit_id = None
 
         return {
             "audit_id": audit_id,
+            "audit_saved": audit_saved,
             "score": score,
             "place_id": place.get('place_id'),
             "name": place.get('name'),
